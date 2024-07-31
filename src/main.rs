@@ -27,14 +27,8 @@ fn start_udp(port: u16) {
     loop {
         let (size, src) = socket.recv_from(&mut buffer).expect("UDP read error");
         println!("UDP read {:?} from {:?}", &size, &src);
-        match socket.send_to(&buffer[0..size], src) {
-            Ok(size) => {
-                println!("Sent data: {:?}", size);
-            }
-            Err(e) => {
-                println!("Send error: {:?}", e);
-            }
-        }
+        let reply="success";
+        socket.send_to(&reply.as_bytes(), &src).expect("UDP send error");
     }
 }
 
@@ -57,17 +51,26 @@ fn start_tcp(port: u16) {
 }
 
 fn handle_client(mut stream: TcpStream) {
+    let mut is_set_nodelay:bool=false;
     loop {
         let mut buffer = [0; 4];
-        stream.read_exact(&mut buffer).expect("Read length error");
+        stream.read_exact(&mut buffer).unwrap_or_else(|_| {
+            println!("Connection closed");
+            return;
+        });
         let size = u32::from_be_bytes(buffer);
         let mut buffer = vec![0; size as usize];
         stream.read_exact(&mut buffer).expect("Read data error");
-        println!("Received: {:?}", String::from_utf8(buffer.clone()).unwrap());
         // JSON parse
-        let deserialized: packet::Packet = serde_json::from_slice(&buffer).expect("Failed to deserialize packet");
-        println!("Deserialized: {:?}", deserialized);
-        stream.set_nodelay(deserialized.no_delay).expect("Set no_delay error");
-        stream.write_all(&deserialized.data).expect("Send data error");
+        // println!("Deserialized: {:?}", deserialized);
+        if !is_set_nodelay{
+            let deserialized: packet::Packet = serde_json::from_slice(&buffer).expect("Failed to deserialize packet");
+            stream.set_nodelay(deserialized.no_delay).expect("Set no_delay error");
+            is_set_nodelay=true;
+        }
+        //reply "success"
+        let reply = "success";
+        stream.write_all(&reply.as_bytes()).expect("Send data error");
+        stream.flush().expect("Flush error");
     }
 }
